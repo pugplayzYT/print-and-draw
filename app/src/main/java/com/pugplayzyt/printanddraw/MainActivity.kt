@@ -78,7 +78,7 @@ fun PrintAndDraw() {
     var width by remember { mutableFloatStateOf(32f) }
     var start by remember { mutableStateOf<Offset?>(null) }
     var end by remember { mutableStateOf<Offset?>(null) }
-    var size by remember { mutableStateOf(IntSize.Zero) }
+    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var showColourPicker by remember { mutableStateOf(false) }
 
     Scaffold(
@@ -143,7 +143,7 @@ fun PrintAndDraw() {
             ) {
                 Button(
                     onClick = {
-                        if (size != IntSize.Zero) printBitmap(ctx, render(size, lines))
+                        if (canvasSize != IntSize.Zero) printBitmap(ctx, render(canvasSize, lines))
                     },
                     modifier = Modifier.weight(1f)
                 ) {
@@ -154,7 +154,7 @@ fun PrintAndDraw() {
 
                 Button(
                     onClick = {
-                        if (size != IntSize.Zero) savePng(ctx, render(size, lines))
+                        if (canvasSize != IntSize.Zero) savePng(ctx, render(canvasSize, lines))
                     },
                     modifier = Modifier.weight(1f)
                 ) {
@@ -173,15 +173,15 @@ fun PrintAndDraw() {
                     .clip(RoundedCornerShape(12.dp))
                     .background(Color.White)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
-                    .onSizeChanged { size = it }
+                    .onSizeChanged { canvasSize = it }
             ) {
                 Canvas(
                     modifier = Modifier
                         .fillMaxSize()
-                        .pointerInput(color, width) {
+                        .pointerInput(color, width, canvasSize) {
                             fun bounded(point: Offset): Offset = Offset(
-                                x = point.x.coerceIn(0f, size.width.toFloat()),
-                                y = point.y.coerceIn(0f, size.height.toFloat())
+                                x = point.x.coerceIn(0f, canvasSize.width.toFloat()),
+                                y = point.y.coerceIn(0f, canvasSize.height.toFloat())
                             )
 
                             detectDragGestures(
@@ -211,12 +211,7 @@ fun PrintAndDraw() {
                             )
                         }
                 ) {
-                    clipRect(
-                        left = 0f,
-                        top = 0f,
-                        right = size.width,
-                        bottom = size.height
-                    ) {
+                    clipRect {
                         lines.forEach {
                             drawLine(Color(it.color), it.a, it.b, it.width, StrokeCap.Square)
                         }
