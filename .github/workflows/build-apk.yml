@@ -25,16 +25,9 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Prepare release signing key
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      - name: Restore public release signing key
         run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "Missing GitHub Actions secret: ANDROID_KEYSTORE_BASE64"
-            echo "Add the base64 release keystore as that repository secret, then rerun this workflow."
-            exit 1
-          fi
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/print-and-draw-release.jks"
+          base64 --decode .signing/print-and-draw-release.jks.b64 > "$RUNNER_TEMP/print-and-draw-release.jks"
           echo "ANDROID_KEYSTORE_PATH=$RUNNER_TEMP/print-and-draw-release.jks" >> "$GITHUB_ENV"
 
       - name: Build production signed APK
