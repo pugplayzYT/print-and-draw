@@ -30,11 +30,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -168,7 +170,8 @@ fun PrintAndDraw() {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .background(Color.White, RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color.White)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
                     .onSizeChanged { size = it }
             ) {
@@ -176,11 +179,20 @@ fun PrintAndDraw() {
                     modifier = Modifier
                         .fillMaxSize()
                         .pointerInput(color, width) {
+                            fun bounded(point: Offset): Offset = Offset(
+                                x = point.x.coerceIn(0f, size.width.toFloat()),
+                                y = point.y.coerceIn(0f, size.height.toFloat())
+                            )
+
                             detectDragGestures(
-                                onDragStart = { start = it; end = it },
+                                onDragStart = { point ->
+                                    val safe = bounded(point)
+                                    start = safe
+                                    end = safe
+                                },
                                 onDrag = { change, _ ->
                                     change.consume()
-                                    end = change.position
+                                    end = bounded(change.position)
                                 },
                                 onDragEnd = {
                                     val a = start
@@ -199,14 +211,21 @@ fun PrintAndDraw() {
                             )
                         }
                 ) {
-                    lines.forEach {
-                        drawLine(Color(it.color), it.a, it.b, it.width, StrokeCap.Square)
-                    }
+                    clipRect(
+                        left = 0f,
+                        top = 0f,
+                        right = size.width,
+                        bottom = size.height
+                    ) {
+                        lines.forEach {
+                            drawLine(Color(it.color), it.a, it.b, it.width, StrokeCap.Square)
+                        }
 
-                    val a = start
-                    val b = end
-                    if (a != null && b != null) {
-                        drawLine(color, a, b, width, StrokeCap.Square)
+                        val a = start
+                        val b = end
+                        if (a != null && b != null) {
+                            drawLine(color, a, b, width, StrokeCap.Square)
+                        }
                     }
                 }
             }
