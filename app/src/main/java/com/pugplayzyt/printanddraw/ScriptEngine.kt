@@ -19,6 +19,8 @@ import kotlin.math.tan
 object DrawScriptEngine {
     private const val MAX_STATEMENTS = 100_000
     private const val MAX_REPEAT = 100_000
+    private const val MIN_PEN_WIDTH = 1.0
+    private const val MAX_PEN_WIDTH = 500.0
 
     suspend fun run(
         source: String,
@@ -41,12 +43,19 @@ object DrawScriptEngine {
         var penDown = false
         var pen = Offset(0f, 0f)
         var speed = 1000.0
+        var currentColor = color
+        var currentWidth = strokeWidth.coerceIn(MIN_PEN_WIDTH.toFloat(), MAX_PEN_WIDTH.toFloat())
         var executed = 0
 
         fun bounded(x: Double, y: Double): Offset = Offset(
             x.toFloat().coerceIn(0f, canvasSize.width.toFloat()),
             y.toFloat().coerceIn(0f, canvasSize.height.toFloat())
         )
+
+        fun channel(expression: String): Int = Expression(expression, env)
+            .value()
+            .roundToInt()
+            .coerceIn(0, 255)
 
         suspend fun tick() {
             executed++
@@ -72,13 +81,34 @@ object DrawScriptEngine {
                         tick()
                     }
 
+                    is Stmt.Width -> {
+                        currentWidth = Expression(statement.expression, env)
+                            .value()
+                            .coerceIn(MIN_PEN_WIDTH, MAX_PEN_WIDTH)
+                            .toFloat()
+                        tick()
+                    }
+
+                    is Stmt.Color -> {
+                        val red = channel(statement.red)
+                        val green = channel(statement.green)
+                        val blue = channel(statement.blue)
+                        currentColor = (
+                            (255L shl 24) or
+                                (red.toLong() shl 16) or
+                                (green.toLong() shl 8) or
+                                blue.toLong()
+                            ).toInt()
+                        tick()
+                    }
+
                     is Stmt.Position -> {
                         val next = bounded(
                             Expression(statement.x, env).value(),
                             Expression(statement.y, env).value()
                         )
                         if (penDown && next != pen) {
-                            onSegment(Segment(pen, next, color, strokeWidth))
+                            onSegment(Segment(pen, next, currentColor, currentWidth))
                         }
                         pen = next
                         tick()
@@ -114,6 +144,8 @@ object DrawScriptEngine {
         data class Assign(val name: String, val expression: String) : Stmt
         data class Pen(val down: Boolean) : Stmt
         data class Speed(val expression: String) : Stmt
+        data class Width(val expression: String) : Stmt
+        data class Color(val red: String, val green: String, val blue: String) : Stmt
         data class Position(val x: String, val y: String) : Stmt
         data class Repeat(val count: String, val body: List<Stmt>) : Stmt
         data class If(val condition: String, val body: List<Stmt>) : Stmt
@@ -169,6 +201,36 @@ object DrawScriptEngine {
                         index++
                     }
 
+                    line.startsWith("pen width ") -> {
+                        val expression = line.removePrefix("pen width ").trim()
+                        requireText(expression, "pen width")
+                        out += Stmt.Width(expression)
+                        index++
+                    }
+                    line.startsWith("width ") -> {
+                        val expression = line.removePrefix("width ").trim()
+                        requireText(expression, "pen width")
+                        out += Stmt.Width(expression)
+                        index++
+                    }
+
+                    line.startsWith("pen color ") -> {
+                        out += parseColor(line.removePrefix("pen color "))
+                        index++
+                    }
+                    line.startsWith("pen colour ") -> {
+                        out += parseColor(line.removePrefix("pen colour "))
+                        index++
+                    }
+                    line.startsWith("color ") -> {
+                        out += parseColor(line.removePrefix("color "))
+                        index++
+                    }
+                    line.startsWith("colour ") -> {
+                        out += parseColor(line.removePrefix("colour "))
+                        index++
+                    }
+
                     line.startsWith("pen position ") -> {
                         out += parsePosition(line.removePrefix("pen position "))
                         index++
@@ -209,25 +271,38 @@ object DrawScriptEngine {
         }
 
         private fun parsePosition(text: String): Stmt.Position {
-            val comma = findTopLevelComma(text)
-            if (comma < 0) error("Position needs x, y separated by a comma")
-            val x = text.substring(0, comma).trim()
-            val y = text.substring(comma + 1).trim()
-            requireText(x, "x position")
-            requireText(y, "y position")
-            return Stmt.Position(x, y)
+            val parts = splitTopLevelCommas(text)
+            if (parts.size != 2) error("Position needs x, y separated by a comma")
+            requireText(parts[0], "x position")
+            requireText(parts[1], "y position")
+            return Stmt.Position(parts[0], parts[1])
         }
 
-        private fun findTopLevelComma(text: String): Int {
+        private fun parseColor(text: String): Stmt.Color {
+            val parts = splitTopLevelCommas(text)
+            if (parts.size != 3) error("Colour needs red, green, blue values separated by commas")
+            requireText(parts[0], "red channel")
+            requireText(parts[1], "green channel")
+            requireText(parts[2], "blue channel")
+            return Stmt.Color(parts[0], parts[1], parts[2])
+        }
+
+        private fun splitTopLevelCommas(text: String): List<String> {
+            val parts = mutableListOf<String>()
             var depth = 0
+            var start = 0
             text.forEachIndexed { i, ch ->
                 when (ch) {
                     '(' -> depth++
                     ')' -> depth--
-                    ',' -> if (depth == 0) return i
+                    ',' -> if (depth == 0) {
+                        parts += text.substring(start, i).trim()
+                        start = i + 1
+                    }
                 }
             }
-            return -1
+            parts += text.substring(start).trim()
+            return parts
         }
 
         private fun requireText(value: String, name: String) {
