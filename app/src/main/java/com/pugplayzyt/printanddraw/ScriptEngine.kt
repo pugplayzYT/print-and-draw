@@ -14,13 +14,17 @@ import kotlin.math.tan
 /**
  * Tiny drawing-only language. It has no file, network, reflection, process,
  * Android, or arbitrary code execution features: the only observable output is
- * moving the virtual pen and emitting canvas segments through [onSegment].
+ * moving the virtual pen and emitting canvas segments or generated frames.
  */
 object DrawScriptEngine {
     private const val MAX_STATEMENTS = 100_000
     private const val MAX_REPEAT = 100_000
+    private const val MAX_FRAMES = 10_000
     private const val MIN_PEN_WIDTH = 1.0
     private const val MAX_PEN_WIDTH = 500.0
+    private const val MIN_FRAME_RATE = 1.0
+    private const val MAX_FRAME_RATE = 120.0
+    private const val DEFAULT_FRAME_RATE = 30.0
 
     suspend fun run(
         source: String,
@@ -28,6 +32,7 @@ object DrawScriptEngine {
         color: Int,
         strokeWidth: Float,
         onSegment: (Segment) -> Unit,
+        onFrame: (segments: List<Segment>, frame: Int, totalFrames: Int) -> Unit = { _, _, _ -> },
         onStatus: (String) -> Unit = {}
     ) {
         if (canvasSize == IntSize.Zero) error("Canvas is not ready")
@@ -46,6 +51,10 @@ object DrawScriptEngine {
         var currentColor = color
         var currentWidth = strokeWidth.coerceIn(MIN_PEN_WIDTH.toFloat(), MAX_PEN_WIDTH.toFloat())
         var executed = 0
+        var frameSystemRegistered = false
+        var frameRate = DEFAULT_FRAME_RATE
+        var activeFrameSegments: MutableList<Segment>? = null
+        val staticSegments = mutableListOf<Segment>()
 
         fun bounded(x: Double, y: Double): Offset = Offset(
             x.toFloat().coerceIn(0f, canvasSize.width.toFloat()),
@@ -56,6 +65,16 @@ object DrawScriptEngine {
             .value()
             .roundToInt()
             .coerceIn(0, 255)
+
+        fun emit(segment: Segment) {
+            val frame = activeFrameSegments
+            if (frame != null) {
+                frame += segment
+            } else {
+                staticSegments += segment
+                onSegment(segment)
+            }
+        }
 
         suspend fun tick() {
             executed++
@@ -108,13 +127,11 @@ object DrawScriptEngine {
                             Expression(statement.y, env).value()
                         )
                         if (penDown && next != pen) {
-                            onSegment(Segment(pen, next, currentColor, currentWidth))
+                            emit(Segment(pen, next, currentColor, currentWidth))
                         }
                         pen = next
                         tick()
 
-                        // Pen speed means position updates per second. 1000 is effectively instant,
-                        // while 1 visibly advances one scripted point per second.
                         if (speed < 1000.0) {
                             delay((1000.0 / speed).toLong().coerceAtLeast(1L))
                         }
@@ -130,6 +147,71 @@ object DrawScriptEngine {
                         if (Condition(statement.condition, env).value()) {
                             execute(statement.body)
                         }
+                    }
+
+                    Stmt.RegisterFrameSystem -> {
+                        frameSystemRegistered = true
+                        tick()
+                    }
+
+                    is Stmt.FrameRate -> {
+                        if (!frameSystemRegistered) error("Register the frame system before setting frame rate")
+                        frameRate = Expression(statement.expression, env)
+                            .value()
+                            .coerceIn(MIN_FRAME_RATE, MAX_FRAME_RATE)
+                        tick()
+                    }
+
+                    is Stmt.GenerateFrames -> {
+                        if (!frameSystemRegistered) error("Register the frame system before generating frames")
+                        if (activeFrameSegments != null) error("Frame blocks cannot be nested")
+
+                        val frameCount = Expression(statement.count, env).value().roundToInt()
+                            .coerceIn(0, MAX_FRAMES)
+                        val baselineEnv = env.toMap()
+                        val baselinePenDown = penDown
+                        val baselinePen = pen
+                        val baselineSpeed = speed
+                        val baselineColor = currentColor
+                        val baselineWidth = currentWidth
+
+                        tick()
+                        for (frameNumber in 1..frameCount) {
+                            env.clear()
+                            env.putAll(baselineEnv)
+                            env["frame"] = frameNumber.toDouble()
+                            env["frames"] = frameCount.toDouble()
+                            env["fps"] = frameRate
+
+                            penDown = baselinePenDown
+                            pen = baselinePen
+                            speed = baselineSpeed
+                            currentColor = baselineColor
+                            currentWidth = baselineWidth
+
+                            val frameSegments = mutableListOf<Segment>()
+                            activeFrameSegments = frameSegments
+                            try {
+                                execute(statement.body)
+                            } finally {
+                                activeFrameSegments = null
+                            }
+
+                            onFrame(staticSegments + frameSegments, frameNumber, frameCount)
+                            onStatus("Frame $frameNumber / $frameCount • ${frameRate.roundToInt()} fps")
+
+                            if (frameNumber < frameCount) {
+                                delay((1000.0 / frameRate).toLong().coerceAtLeast(1L))
+                            }
+                        }
+
+                        env.clear()
+                        env.putAll(baselineEnv)
+                        penDown = baselinePenDown
+                        pen = baselinePen
+                        speed = baselineSpeed
+                        currentColor = baselineColor
+                        currentWidth = baselineWidth
                     }
                 }
             }
@@ -149,6 +231,9 @@ object DrawScriptEngine {
         data class Position(val x: String, val y: String) : Stmt
         data class Repeat(val count: String, val body: List<Stmt>) : Stmt
         data class If(val condition: String, val body: List<Stmt>) : Stmt
+        data object RegisterFrameSystem : Stmt
+        data class FrameRate(val expression: String) : Stmt
+        data class GenerateFrames(val count: String, val body: List<Stmt>) : Stmt
     }
 
     private class Parser(source: String) {
@@ -174,7 +259,14 @@ object DrawScriptEngine {
                     return out
                 }
 
+                val generatedFrames = generatedFrameCount(line)
                 when {
+                    generatedFrames != null -> {
+                        requireText(generatedFrames, "frame count")
+                        index++
+                        out += Stmt.GenerateFrames(generatedFrames, parseBlock(root = false))
+                    }
+
                     line.startsWith("repeat ") && line.endsWith("{") -> {
                         val count = line.removePrefix("repeat ").removeSuffix("{").trim()
                         requireText(count, "repeat count")
@@ -187,6 +279,25 @@ object DrawScriptEngine {
                         requireText(condition, "if condition")
                         index++
                         out += Stmt.If(condition, parseBlock(root = false))
+                    }
+
+                    line == "register frame system" || line == "register frames" -> {
+                        out += Stmt.RegisterFrameSystem
+                        index++
+                    }
+
+                    line.startsWith("frame rate ") -> {
+                        val expression = line.removePrefix("frame rate ").trim()
+                        requireText(expression, "frame rate")
+                        out += Stmt.FrameRate(expression)
+                        index++
+                    }
+
+                    line.startsWith("fps ") -> {
+                        val expression = line.removePrefix("fps ").trim()
+                        requireText(expression, "frame rate")
+                        out += Stmt.FrameRate(expression)
+                        index++
                     }
 
                     line == "pen up" -> { out += Stmt.Pen(false); index++ }
@@ -261,6 +372,19 @@ object DrawScriptEngine {
             return out
         }
 
+        private fun generatedFrameCount(line: String): String? {
+            Regex("""generate\s+(.+?)\s+frames\s*\{""").matchEntire(line)?.let {
+                return it.groupValues[1].trim()
+            }
+            Regex("""generate\s+frames\s+(.+?)\s*\{""").matchEntire(line)?.let {
+                return it.groupValues[1].trim()
+            }
+            Regex("""frames\s+(.+?)\s*\{""").matchEntire(line)?.let {
+                return it.groupValues[1].trim()
+            }
+            return null
+        }
+
         private fun parseAssignment(text: String): Stmt.Assign {
             val eq = text.indexOf('=')
             if (eq <= 0 || eq == text.lastIndex) error("Expected: let name = expression")
@@ -311,7 +435,18 @@ object DrawScriptEngine {
     }
 
     private class Condition(private val text: String, private val env: Map<String, Double>) {
-        fun value(): Boolean {
+        fun value(): Boolean = evaluate(text.trim())
+
+        private fun evaluate(raw: String): Boolean {
+            val text = stripOuterParentheses(raw.trim())
+
+            findTopLevelLogical(text, "or", "||")?.let { (at, token) ->
+                return evaluate(text.substring(0, at)) || evaluate(text.substring(at + token.length))
+            }
+            findTopLevelLogical(text, "and", "&&")?.let { (at, token) ->
+                return evaluate(text.substring(0, at)) && evaluate(text.substring(at + token.length))
+            }
+
             val operators = listOf(">=", "<=", "==", "!=", ">", "<")
             for (op in operators) {
                 val at = findTopLevelOperator(text, op)
@@ -329,6 +464,51 @@ object DrawScriptEngine {
                 }
             }
             return Expression(text, env).value() != 0.0
+        }
+
+        private fun stripOuterParentheses(value: String): String {
+            var result = value
+            while (result.length >= 2 && result.first() == '(' && result.last() == ')' && wrapsWholeExpression(result)) {
+                result = result.substring(1, result.lastIndex).trim()
+            }
+            return result
+        }
+
+        private fun wrapsWholeExpression(value: String): Boolean {
+            var depth = 0
+            value.forEachIndexed { index, ch ->
+                when (ch) {
+                    '(' -> depth++
+                    ')' -> {
+                        depth--
+                        if (depth == 0 && index != value.lastIndex) return false
+                        if (depth < 0) return false
+                    }
+                }
+            }
+            return depth == 0
+        }
+
+        private fun findTopLevelLogical(text: String, word: String, symbol: String): Pair<Int, String>? {
+            var depth = 0
+            var i = 0
+            while (i < text.length) {
+                when (text[i]) {
+                    '(' -> depth++
+                    ')' -> depth--
+                }
+                if (depth == 0) {
+                    if (text.startsWith(symbol, i)) return i to symbol
+                    if (text.regionMatches(i, word, 0, word.length, ignoreCase = true)) {
+                        val beforeOk = i == 0 || text[i - 1].isWhitespace()
+                        val after = i + word.length
+                        val afterOk = after == text.length || text[after].isWhitespace()
+                        if (beforeOk && afterOk) return i to word
+                    }
+                }
+                i++
+            }
+            return null
         }
 
         private fun findTopLevelOperator(text: String, op: String): Int {
@@ -429,7 +609,6 @@ object DrawScriptEngine {
         }
 
         private fun function(name: String, value: Double): Double = when (name.lowercase()) {
-            // Trig uses degrees so circles are easy to script with 0..360 loops.
             "sin" -> sin(Math.toRadians(value))
             "cos" -> cos(Math.toRadians(value))
             "tan" -> tan(Math.toRadians(value))
