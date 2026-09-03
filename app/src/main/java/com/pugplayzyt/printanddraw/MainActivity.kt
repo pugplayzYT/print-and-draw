@@ -289,9 +289,13 @@ fun PrintAndDraw() {
             saturation = saturation,
             brightness = brightness,
             developerModeUnlocked = developerMode,
-            onHueChange = { hue = it },
-            onSaturationChange = { saturation = it },
-            onBrightnessChange = { brightness = it },
+            onHueChange = { hue = it.roundToInt().toFloat() },
+            onSaturationChange = {
+                saturation = ((it * 100).roundToInt() / 100f).coerceIn(0f, 1f)
+            },
+            onBrightnessChange = {
+                brightness = ((it * 100).roundToInt() / 100f).coerceIn(0f, 1f)
+            },
             onWheelPick = { newHue, newSaturation ->
                 hue = newHue
                 saturation = newSaturation
@@ -423,68 +427,91 @@ fun ColourPickerDialog(
 
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.90f),
             shape = RoundedCornerShape(28.dp),
             tonalElevation = 8.dp
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("Pick colour", style = MaterialTheme.typography.headlineSmall)
-
-                ColourWheel(
-                    hue = hue,
-                    saturation = saturation,
-                    onPick = onWheelPick
+                Text(
+                    "Pick colour",
+                    style = MaterialTheme.typography.headlineSmall,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
                 )
 
-                Box(
+                Column(
                     modifier = Modifier
+                        .weight(1f)
                         .fillMaxWidth()
-                        .height(56.dp)
-                        .background(selected, RoundedCornerShape(14.dp))
-                        .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
-                )
-
-                Text(colorToHex(selected), style = MaterialTheme.typography.titleMedium)
-
-                SliderLabel("Hue", "${hue.roundToInt()}°")
-                Slider(
-                    value = hue,
-                    onValueChange = onHueChange,
-                    valueRange = 0f..360f,
-                    steps = 359
-                )
-
-                SliderLabel("Saturation", "${(saturation * 100).roundToInt()}%")
-                Slider(
-                    value = saturation,
-                    onValueChange = onSaturationChange,
-                    valueRange = 0f..1f,
-                    steps = 99
-                )
-
-                SliderLabel("Brightness", "${(brightness * 100).roundToInt()}%")
-                Slider(
-                    value = brightness,
-                    onValueChange = onBrightnessChange,
-                    valueRange = 0f..1f,
-                    steps = 99
-                )
-
-                if (developerModeUnlocked) {
-                    AssistChip(
-                        onClick = {},
-                        label = { Text("Developer mode unlocked ✓") }
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    ColourWheel(
+                        hue = hue,
+                        saturation = saturation,
+                        onPick = onWheelPick
                     )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp)
+                            .background(selected, RoundedCornerShape(14.dp))
+                            .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
+                    )
+
+                    Text(colorToHex(selected), style = MaterialTheme.typography.titleMedium)
+
+                    SliderLabel("Hue", "${hue.roundToInt()}°")
+                    Slider(
+                        value = hue,
+                        onValueChange = onHueChange,
+                        valueRange = 0f..360f
+                    )
+
+                    SliderLabel("Saturation", "${(saturation * 100).roundToInt()}%")
+                    Slider(
+                        value = saturation,
+                        onValueChange = onSaturationChange,
+                        valueRange = 0f..1f
+                    )
+
+                    SliderLabel("Brightness", "${(brightness * 100).roundToInt()}%")
+                    Slider(
+                        value = brightness,
+                        onValueChange = onBrightnessChange,
+                        valueRange = 0f..1f
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(34.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (developerModeUnlocked) {
+                            Text(
+                                "Developer mode unlocked ✓",
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
 
-                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text("Done")
+                }
             }
         }
     }
@@ -502,7 +529,7 @@ fun SliderLabel(name: String, value: String) {
 fun ColourWheel(hue: Float, saturation: Float, onPick: (Float, Float) -> Unit) {
     val image = remember { makeWheel(500).asImageBitmap() }
 
-    Box(modifier = Modifier.size(230.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.size(210.dp), contentAlignment = Alignment.Center) {
         Image(
             bitmap = image,
             contentDescription = "Colour wheel",
