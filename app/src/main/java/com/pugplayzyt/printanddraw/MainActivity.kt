@@ -97,9 +97,21 @@ fun PrintAndDraw() {
     var brightness by remember { mutableFloatStateOf(1f) }
     val color = Color.hsv(hue, saturation, brightness)
 
-    val developerMode = hue.roundToInt() == 150 &&
+    val developerCodeActive = hue.roundToInt() == 150 &&
         (saturation * 100).roundToInt() == 40 &&
         (brightness * 100).roundToInt() == 40
+
+    val preferences = remember { ctx.getSharedPreferences("print_and_draw_settings", Context.MODE_PRIVATE) }
+    var developerMode by remember {
+        mutableStateOf(preferences.getBoolean("developer_mode", false))
+    }
+
+    LaunchedEffect(developerCodeActive) {
+        if (developerCodeActive && !developerMode) {
+            developerMode = true
+            preferences.edit().putBoolean("developer_mode", true).apply()
+        }
+    }
 
     var width by remember { mutableFloatStateOf(32f) }
     var start by remember { mutableStateOf<Offset?>(null) }
@@ -273,6 +285,7 @@ fun PrintAndDraw() {
             hue = hue,
             saturation = saturation,
             brightness = brightness,
+            developerModeUnlocked = developerMode,
             onHueChange = { hue = it },
             onSaturationChange = { saturation = it },
             onBrightnessChange = { brightness = it },
@@ -396,6 +409,7 @@ fun ColourPickerDialog(
     hue: Float,
     saturation: Float,
     brightness: Float,
+    developerModeUnlocked: Boolean,
     onHueChange: (Float) -> Unit,
     onSaturationChange: (Float) -> Unit,
     onBrightnessChange: (Float) -> Unit,
@@ -444,6 +458,13 @@ fun ColourPickerDialog(
 
                 SliderLabel("Brightness", "${(brightness * 100).toInt()}%")
                 Slider(value = brightness, onValueChange = onBrightnessChange, valueRange = 0f..1f)
+
+                if (developerModeUnlocked) {
+                    AssistChip(
+                        onClick = {},
+                        label = { Text("Developer mode unlocked ✓") }
+                    )
+                }
 
                 Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
             }
