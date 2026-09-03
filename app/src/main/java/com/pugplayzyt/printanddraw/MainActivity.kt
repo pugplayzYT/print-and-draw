@@ -74,216 +74,35 @@ class MainActivity : ComponentActivity() {
 
 data class Segment(val a: Offset, val b: Offset, val color: Int, val width: Float)
 
-private const val DEFAULT_SCRIPT = """# Circle demo
-pen up
+private const val DEFAULT_SCRIPT = """# Multi-style road demo
 pen speed 1000
-let cx = w / 2
-let cy = h / 2
-let r = 120
-let a = 0
-pen position cx + cos(a) * r, cy + sin(a) * r
+let y = h / 2
+
+pen up
+pen width 100
+pen colour 90, 90, 90
+pen position 40, y
 pen down
-repeat 361 {
-    pen position cx + cos(a) * r, cy + sin(a) * r
-    set a = a + 1
-}
+pen position w - 40, y
+
+pen up
+pen width 22
+pen colour 190, 185, 170
+pen position 40, y - 62
+pen down
+pen position w - 40, y - 62
+pen up
+pen position 40, y + 62
+pen down
+pen position w - 40, y + 62
+
+pen up
+pen width 7
+pen colour 255, 205, 0
+pen position 40, y
+pen down
+pen position w - 40, y
 pen up"""
-
-private const val SCRIPTING_DOCS = """# Print & Draw Scripting Language
-
-The scripting language is a tiny drawing-only language built into Print & Draw. It cannot access files, the network, Android APIs, a shell, or arbitrary Kotlin/Java code. Its only output is moving the virtual pen and adding line segments to the canvas.
-
-## Quick start
-
-```text
-pen up
-pen speed 1000
-pen position 100, 100
-pen down
-pen position 300, 100
-pen position 300, 300
-pen position 100, 300
-pen position 100, 100
-pen up
-```
-
-## Comments
-
-Anything after `#` on a line is ignored.
-
-```text
-# This is a comment
-pen up # this is also a comment
-```
-
-## Pen commands
-
-### `pen up`
-Moves the pen without drawing.
-
-### `pen down`
-Makes later position changes draw lines.
-
-### `pen position X, Y`
-Moves the pen to a canvas coordinate. If the pen is down, a line is drawn from the previous position to the new position.
-
-Aliases also accepted:
-
-```text
-pen pos X, Y
-pos X, Y
-```
-
-Coordinates are clamped to the canvas, so scripts cannot draw outside it.
-
-### `pen speed N`
-Controls scripted position updates per second.
-
-```text
-pen speed 1
-pen speed 20
-pen speed 1000
-```
-
-`speed N` is also accepted. The engine clamps speed to `0.1` through `1000`. At `1000`, drawing is effectively instant. At `1`, each `pen position` update is roughly one second apart.
-
-## Variables
-
-Create a variable with `let`:
-
-```text
-let x = 100
-let radius = 150
-```
-
-Change an existing or new variable with `set`:
-
-```text
-set x = x + 10
-```
-
-Variables store numbers.
-
-## Built-in variables
-
-- `w` — canvas width in pixels
-- `h` — canvas height in pixels
-- `pi` — π
-
-Example:
-
-```text
-let cx = w / 2
-let cy = h / 2
-pen position cx, cy
-```
-
-## Arithmetic
-
-Supported operators:
-
-- `+` addition
-- `-` subtraction
-- `*` multiplication
-- `/` division
-- `%` remainder
-- unary `+` and `-`
-- parentheses `( )`
-
-Example:
-
-```text
-let x = (w / 2) + 40
-let y = h * 0.25
-```
-
-## Math functions
-
-- `sin(value)`
-- `cos(value)`
-- `tan(value)`
-- `sqrt(value)`
-- `abs(value)`
-
-Trig functions use **degrees**, not radians.
-
-```text
-let x = cos(90) * 100
-let y = sin(90) * 100
-```
-
-## Repeat loops
-
-```text
-let x = 50
-repeat 10 {
-    pen position x, 100
-    set x = x + 20
-}
-```
-
-The repeat count is an expression and is rounded to an integer. A repeat count is limited to 100,000.
-
-## If blocks
-
-```text
-if x < w / 2 {
-    set x = x + 20
-}
-```
-
-Supported comparisons:
-
-- `>`
-- `<`
-- `>=`
-- `<=`
-- `==`
-- `!=`
-
-If no comparison is used, zero means false and any non-zero number means true.
-
-There is currently no `else` block.
-
-## Circle example
-
-```text
-pen up
-pen speed 1000
-let cx = w / 2
-let cy = h / 2
-let r = 120
-let a = 0
-pen position cx + cos(a) * r, cy + sin(a) * r
-pen down
-repeat 361 {
-    pen position cx + cos(a) * r, cy + sin(a) * r
-    set a = a + 1
-}
-pen up
-```
-
-## Script colour and width
-
-A script uses the **currently selected app colour and block thickness when you press Run**. The language does not currently have `pen colour` or `pen width` commands.
-
-## Run, Stop and Clear Canvas
-
-- **Run** starts the script.
-- **Stop** cancels a running script.
-- **Clear canvas** on the main screen stops any running script and deletes every drawn segment, including segments created by scripts.
-
-## Limits
-
-To stop accidental runaway scripts:
-
-- maximum executed drawing steps: 100,000
-- maximum repeat count: 100,000
-- pen speed: 0.1 to 1000
-- positions are clamped to the canvas
-
-The language has no file access, network access, imports, strings, classes, user-defined functions, `while`, `else`, reflection, shell commands, or arbitrary code execution.
-"""
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -298,17 +117,12 @@ fun PrintAndDraw() {
     var brightness by remember { mutableFloatStateOf(1f) }
     val color = Color.hsv(hue, saturation, brightness)
 
-    val hueCode = hue.roundToInt()
-    val saturationCode = (saturation * 100).roundToInt()
-    val brightnessCode = (brightness * 100).roundToInt()
-    val developerCodeActive = hueCode in 147..153 &&
-        saturationCode in 37..43 &&
-        brightnessCode in 37..43
+    val developerCodeActive = hue.roundToInt() in 147..153 &&
+        (saturation * 100).roundToInt() in 37..43 &&
+        (brightness * 100).roundToInt() in 37..43
 
     val preferences = remember { ctx.getSharedPreferences("print_and_draw_settings", Context.MODE_PRIVATE) }
-    var developerMode by remember {
-        mutableStateOf(preferences.getBoolean("developer_mode", false))
-    }
+    var developerMode by remember { mutableStateOf(preferences.getBoolean("developer_mode", false)) }
 
     LaunchedEffect(developerCodeActive) {
         if (developerCodeActive && !developerMode) {
@@ -332,28 +146,18 @@ fun PrintAndDraw() {
             TopAppBar(
                 title = { Text("Print & Draw") },
                 actions = {
-                    IconButton(
-                        enabled = lines.isNotEmpty(),
-                        onClick = {
-                            if (lines.isNotEmpty()) redo.add(lines.removeAt(lines.lastIndex))
-                        }
-                    ) { Icon(Icons.Default.Undo, "Undo") }
-
-                    IconButton(
-                        enabled = redo.isNotEmpty(),
-                        onClick = {
-                            if (redo.isNotEmpty()) lines.add(redo.removeAt(redo.lastIndex))
-                        }
-                    ) { Icon(Icons.Default.Redo, "Redo") }
+                    IconButton(enabled = lines.isNotEmpty(), onClick = {
+                        if (lines.isNotEmpty()) redo.add(lines.removeAt(lines.lastIndex))
+                    }) { Icon(Icons.Default.Undo, "Undo") }
+                    IconButton(enabled = redo.isNotEmpty(), onClick = {
+                        if (redo.isNotEmpty()) lines.add(redo.removeAt(redo.lastIndex))
+                    }) { Icon(Icons.Default.Redo, "Redo") }
                 }
             )
         }
     ) { pad ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(pad)
-                .padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier.fillMaxSize().padding(pad).padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text("Block thickness: ${width.toInt()} px", style = MaterialTheme.typography.titleMedium)
@@ -365,46 +169,33 @@ fun PrintAndDraw() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
-                    modifier = Modifier
-                        .size(48.dp)
+                    modifier = Modifier.size(48.dp)
                         .background(color, RoundedCornerShape(12.dp))
                         .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(12.dp))
                 )
-
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Selected colour", style = MaterialTheme.typography.labelLarge)
                     Text(colorToHex(color), style = MaterialTheme.typography.bodyMedium)
                 }
-
                 FilledTonalButton(onClick = { showColourPicker = true }) {
-                    Icon(Icons.Default.ColorLens, contentDescription = null)
+                    Icon(Icons.Default.ColorLens, null)
                     Spacer(Modifier.width(6.dp))
                     Text("Pick colour")
                 }
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = {
-                        if (canvasSize != IntSize.Zero) printBitmap(ctx, render(canvasSize, lines))
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Print, contentDescription = null)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = {
+                    if (canvasSize != IntSize.Zero) printBitmap(ctx, render(canvasSize, lines))
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Print, null)
                     Spacer(Modifier.width(6.dp))
                     Text("Print")
                 }
-
-                Button(
-                    onClick = {
-                        if (canvasSize != IntSize.Zero) savePng(ctx, render(canvasSize, lines))
-                    },
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(Icons.Default.Save, contentDescription = null)
+                Button(onClick = {
+                    if (canvasSize != IntSize.Zero) savePng(ctx, render(canvasSize, lines))
+                }, modifier = Modifier.weight(1f)) {
+                    Icon(Icons.Default.Save, null)
                     Spacer(Modifier.width(6.dp))
                     Text("Save PNG")
                 }
@@ -421,21 +212,16 @@ fun PrintAndDraw() {
                 },
                 enabled = lines.isNotEmpty() || scriptJob?.isActive == true,
                 modifier = Modifier.fillMaxWidth(),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error
-                )
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)
             ) {
-                Icon(Icons.Default.DeleteSweep, contentDescription = null)
+                Icon(Icons.Default.DeleteSweep, null)
                 Spacer(Modifier.width(8.dp))
                 Text("Clear canvas")
             }
 
             if (developerMode) {
-                FilledTonalButton(
-                    onClick = { showScriptEditor = true },
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Icon(Icons.Default.Code, contentDescription = null)
+                FilledTonalButton(onClick = { showScriptEditor = true }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Default.Code, null)
                     Spacer(Modifier.width(8.dp))
                     Text("Scripting block • Developer mode")
                 }
@@ -444,60 +230,46 @@ fun PrintAndDraw() {
             Text("Drag from one point to another to place a coloured block.")
 
             Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
+                modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(12.dp))
                     .background(Color.White)
                     .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(12.dp))
                     .onSizeChanged { canvasSize = it }
             ) {
                 Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(color, width, canvasSize) {
-                            fun bounded(point: Offset): Offset = Offset(
-                                x = point.x.coerceIn(0f, canvasSize.width.toFloat()),
-                                y = point.y.coerceIn(0f, canvasSize.height.toFloat())
-                            )
-
-                            detectDragGestures(
-                                onDragStart = { point ->
-                                    val safe = bounded(point)
-                                    start = safe
-                                    end = safe
-                                },
-                                onDrag = { change, _ ->
-                                    change.consume()
-                                    end = bounded(change.position)
-                                },
-                                onDragEnd = {
-                                    val a = start
-                                    val b = end
-                                    if (a != null && b != null && a != b) {
-                                        lines.add(Segment(a, b, color.toArgb(), width))
-                                        redo.clear()
-                                    }
-                                    start = null
-                                    end = null
-                                },
-                                onDragCancel = {
-                                    start = null
-                                    end = null
+                    modifier = Modifier.fillMaxSize().pointerInput(color, width, canvasSize) {
+                        fun bounded(point: Offset): Offset = Offset(
+                            point.x.coerceIn(0f, canvasSize.width.toFloat()),
+                            point.y.coerceIn(0f, canvasSize.height.toFloat())
+                        )
+                        detectDragGestures(
+                            onDragStart = { point ->
+                                val safe = bounded(point)
+                                start = safe
+                                end = safe
+                            },
+                            onDrag = { change, _ ->
+                                change.consume()
+                                end = bounded(change.position)
+                            },
+                            onDragEnd = {
+                                val a = start
+                                val b = end
+                                if (a != null && b != null && a != b) {
+                                    lines.add(Segment(a, b, color.toArgb(), width))
+                                    redo.clear()
                                 }
-                            )
-                        }
+                                start = null
+                                end = null
+                            },
+                            onDragCancel = { start = null; end = null }
+                        )
+                    }
                 ) {
                     clipRect {
-                        lines.forEach {
-                            drawLine(Color(it.color), it.a, it.b, it.width, StrokeCap.Square)
-                        }
-
+                        lines.forEach { drawLine(Color(it.color), it.a, it.b, it.width, StrokeCap.Square) }
                         val a = start
                         val b = end
-                        if (a != null && b != null) {
-                            drawLine(color, a, b, width, StrokeCap.Square)
-                        }
+                        if (a != null && b != null) drawLine(color, a, b, width, StrokeCap.Square)
                     }
                 }
             }
@@ -511,16 +283,9 @@ fun PrintAndDraw() {
             brightness = brightness,
             developerModeUnlocked = developerMode,
             onHueChange = { hue = it.roundToInt().toFloat() },
-            onSaturationChange = {
-                saturation = ((it * 100).roundToInt() / 100f).coerceIn(0f, 1f)
-            },
-            onBrightnessChange = {
-                brightness = ((it * 100).roundToInt() / 100f).coerceIn(0f, 1f)
-            },
-            onWheelPick = { newHue, newSaturation ->
-                hue = newHue
-                saturation = newSaturation
-            },
+            onSaturationChange = { saturation = ((it * 100).roundToInt() / 100f).coerceIn(0f, 1f) },
+            onBrightnessChange = { brightness = ((it * 100).roundToInt() / 100f).coerceIn(0f, 1f) },
+            onWheelPick = { newHue, newSaturation -> hue = newHue; saturation = newSaturation },
             onDismiss = { showColourPicker = false }
         )
     }
@@ -553,10 +318,7 @@ fun PrintAndDraw() {
                     }
                 }
             },
-            onStop = {
-                scriptJob?.cancel()
-                scriptStatus = "Stopped"
-            },
+            onStop = { scriptJob?.cancel(); scriptStatus = "Stopped" },
             onDismiss = { showScriptEditor = false }
         )
     }
@@ -575,16 +337,9 @@ fun ScriptEditorDialog(
     var showDocs by remember { mutableStateOf(false) }
 
     Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(28.dp),
-            tonalElevation = 8.dp
-        ) {
+        Surface(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(28.dp), tonalElevation = 8.dp) {
             Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 720.dp)
-                    .padding(18.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(max = 720.dp).padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Row(
@@ -594,48 +349,31 @@ fun ScriptEditorDialog(
                 ) {
                     Text("Drawing Script", style = MaterialTheme.typography.headlineSmall)
                     FilledTonalButton(onClick = { showDocs = true }) {
-                        Icon(Icons.Default.MenuBook, contentDescription = null)
+                        Icon(Icons.Default.MenuBook, null)
                         Spacer(Modifier.width(6.dp))
                         Text("Docs")
                     }
                 }
-
                 Text(
-                    "Drawing-only language. Open Docs for the full Markdown reference.",
+                    "Scripts can now change pen width and RGB colour while running.",
                     style = MaterialTheme.typography.bodySmall
                 )
-
                 OutlinedTextField(
                     value = script,
                     onValueChange = onScriptChange,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
+                    modifier = Modifier.fillMaxWidth().weight(1f),
                     label = { Text("Script") },
                     textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
                 )
-
                 Text(status, style = MaterialTheme.typography.labelLarge)
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Button(
-                        onClick = onRun,
-                        enabled = !running,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onRun, enabled = !running, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.PlayArrow, null)
                         Spacer(Modifier.width(5.dp))
                         Text("Run")
                     }
-                    OutlinedButton(
-                        onClick = onStop,
-                        enabled = running,
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Stop, contentDescription = null)
+                    OutlinedButton(onClick = onStop, enabled = running, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Default.Stop, null)
                         Spacer(Modifier.width(5.dp))
                         Text("Stop")
                     }
@@ -645,59 +383,40 @@ fun ScriptEditorDialog(
         }
     }
 
-    if (showDocs) {
-        ScriptDocsDialog(onDismiss = { showDocs = false })
-    }
+    if (showDocs) ScriptDocsDialog(onDismiss = { showDocs = false })
 }
 
 @Composable
 fun ScriptDocsDialog(onDismiss: () -> Unit) {
     val ctx = androidx.compose.ui.platform.LocalContext.current
-
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.90f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.90f),
             shape = RoundedCornerShape(28.dp),
             tonalElevation = 10.dp
         ) {
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(18.dp),
+                modifier = Modifier.fillMaxSize().padding(18.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 Text("Scripting Docs", style = MaterialTheme.typography.headlineSmall)
-                Text(
-                    "Complete Markdown reference — copy it directly if you want to save or share it.",
-                    style = MaterialTheme.typography.bodySmall
+                Text("Rendered Markdown reference", style = MaterialTheme.typography.bodySmall)
+
+                RenderedMarkdown(
+                    markdown = SCRIPTING_DOCS_V2,
+                    modifier = Modifier.fillMaxWidth().weight(1f)
                 )
 
-                OutlinedTextField(
-                    value = SCRIPTING_DOCS,
-                    onValueChange = {},
-                    readOnly = true,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    label = { Text("Markdown") },
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(
                         onClick = {
                             val clipboard = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Print & Draw scripting docs", SCRIPTING_DOCS))
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Print & Draw scripting docs", SCRIPTING_DOCS_V2))
                             Toast.makeText(ctx, "Markdown docs copied", Toast.LENGTH_SHORT).show()
                         },
                         modifier = Modifier.weight(1f)
                     ) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = null)
+                        Icon(Icons.Default.ContentCopy, null)
                         Spacer(Modifier.width(6.dp))
                         Text("Copy Markdown")
                     }
@@ -721,94 +440,39 @@ fun ColourPickerDialog(
     onDismiss: () -> Unit
 ) {
     val selected = Color.hsv(hue, saturation, brightness)
-
     Dialog(onDismissRequest = onDismiss) {
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.90f),
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.90f),
             shape = RoundedCornerShape(28.dp),
             tonalElevation = 8.dp
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    "Pick colour",
-                    style = MaterialTheme.typography.headlineSmall,
-                    modifier = Modifier.align(Alignment.CenterHorizontally)
-                )
-
+            Column(modifier = Modifier.fillMaxSize().padding(18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Pick colour", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.align(Alignment.CenterHorizontally))
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth()
-                        .verticalScroll(rememberScrollState()),
+                    modifier = Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    ColourWheel(
-                        hue = hue,
-                        saturation = saturation,
-                        onPick = onWheelPick
-                    )
-
+                    ColourWheel(hue, saturation, onWheelPick)
                     Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp)
+                        modifier = Modifier.fillMaxWidth().height(48.dp)
                             .background(selected, RoundedCornerShape(14.dp))
                             .border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(14.dp))
                     )
-
                     Text(colorToHex(selected), style = MaterialTheme.typography.titleMedium)
-
                     SliderLabel("Hue", "${hue.roundToInt()}°")
-                    Slider(
-                        value = hue,
-                        onValueChange = onHueChange,
-                        valueRange = 0f..360f
-                    )
-
+                    Slider(value = hue, onValueChange = onHueChange, valueRange = 0f..360f)
                     SliderLabel("Saturation", "${(saturation * 100).roundToInt()}%")
-                    Slider(
-                        value = saturation,
-                        onValueChange = onSaturationChange,
-                        valueRange = 0f..1f
-                    )
-
+                    Slider(value = saturation, onValueChange = onSaturationChange, valueRange = 0f..1f)
                     SliderLabel("Brightness", "${(brightness * 100).roundToInt()}%")
-                    Slider(
-                        value = brightness,
-                        onValueChange = onBrightnessChange,
-                        valueRange = 0f..1f
-                    )
-
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(34.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Slider(value = brightness, onValueChange = onBrightnessChange, valueRange = 0f..1f)
+                    Box(modifier = Modifier.fillMaxWidth().height(34.dp), contentAlignment = Alignment.Center) {
                         if (developerModeUnlocked) {
-                            Text(
-                                "Developer mode unlocked ✓",
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.primary
-                            )
+                            Text("Developer mode unlocked ✓", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                         }
                     }
                 }
-
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Done")
-                }
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
             }
         }
     }
@@ -825,13 +489,11 @@ fun SliderLabel(name: String, value: String) {
 @Composable
 fun ColourWheel(hue: Float, saturation: Float, onPick: (Float, Float) -> Unit) {
     val image = remember { makeWheel(500).asImageBitmap() }
-
     Box(modifier = Modifier.size(210.dp), contentAlignment = Alignment.Center) {
         Image(
             bitmap = image,
             contentDescription = "Colour wheel",
-            modifier = Modifier
-                .matchParentSize()
+            modifier = Modifier.matchParentSize()
                 .pointerInput(Unit) {
                     detectTapGestures { p ->
                         val radius = min(size.width, size.height) / 2f
@@ -839,8 +501,7 @@ fun ColourWheel(hue: Float, saturation: Float, onPick: (Float, Float) -> Unit) {
                         val dy = p.y - size.height / 2f
                         val d = hypot(dx, dy)
                         if (d <= radius) {
-                            val newHue = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
-                            onPick(newHue, (d / radius).coerceIn(0f, 1f))
+                            onPick(((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f, (d / radius).coerceIn(0f, 1f))
                         }
                     }
                 }
@@ -851,8 +512,7 @@ fun ColourWheel(hue: Float, saturation: Float, onPick: (Float, Float) -> Unit) {
                             val dx = p.x - size.width / 2f
                             val dy = p.y - size.height / 2f
                             val d = hypot(dx, dy).coerceAtMost(radius)
-                            val newHue = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
-                            onPick(newHue, (d / radius).coerceIn(0f, 1f))
+                            onPick(((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f, (d / radius).coerceIn(0f, 1f))
                         },
                         onDrag = { change, _ ->
                             val p = change.position
@@ -860,14 +520,12 @@ fun ColourWheel(hue: Float, saturation: Float, onPick: (Float, Float) -> Unit) {
                             val dx = p.x - size.width / 2f
                             val dy = p.y - size.height / 2f
                             val d = hypot(dx, dy).coerceAtMost(radius)
-                            val newHue = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
-                            onPick(newHue, (d / radius).coerceIn(0f, 1f))
+                            onPick(((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f, (d / radius).coerceIn(0f, 1f))
                             change.consume()
                         }
                     )
                 }
         )
-
         Canvas(modifier = Modifier.matchParentSize()) {
             val radius = size.minDimension / 2f
             val angle = Math.toRadians(hue.toDouble())
@@ -890,16 +548,12 @@ fun makeWheel(n: Int): Bitmap {
         val dx = x - center
         val dy = y - center
         val d = hypot(dx, dy)
-        bitmap.setPixel(
-            x,
-            y,
-            if (d <= center) {
-                hsv[0] = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
-                hsv[1] = (d / center).coerceIn(0f, 1f)
-                hsv[2] = 1f
-                android.graphics.Color.HSVToColor(hsv)
-            } else android.graphics.Color.TRANSPARENT
-        )
+        bitmap.setPixel(x, y, if (d <= center) {
+            hsv[0] = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
+            hsv[1] = (d / center).coerceIn(0f, 1f)
+            hsv[2] = 1f
+            android.graphics.Color.HSVToColor(hsv)
+        } else android.graphics.Color.TRANSPARENT)
     }
     return bitmap
 }
@@ -908,10 +562,7 @@ fun render(size: IntSize, lines: List<Segment>): Bitmap {
     val bitmap = Bitmap.createBitmap(size.width.coerceAtLeast(1), size.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
     val canvas = GCanvas(bitmap)
     canvas.drawColor(android.graphics.Color.WHITE)
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.SQUARE
-    }
+    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.SQUARE }
     lines.forEach {
         paint.color = it.color
         paint.strokeWidth = it.width
@@ -936,8 +587,7 @@ fun savePng(ctx: Context, bitmap: Bitmap) {
         put(MediaStore.Images.Media.IS_PENDING, 1)
     }
     val resolver = ctx.contentResolver
-    val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-    if (uri == null) {
+    val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values) ?: run {
         Toast.makeText(ctx, "Could not create PNG", Toast.LENGTH_SHORT).show()
         return
     }
