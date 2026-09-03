@@ -3,7 +3,7 @@ package com.pugplayzyt.printanddraw
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.graphics.Canvas as AndroidCanvas
+import android.graphics.Canvas as GCanvas
 import android.graphics.Paint
 import android.os.Bundle
 import android.provider.MediaStore
@@ -15,39 +15,14 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Undo
-import androidx.compose.material3.Button
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -71,185 +46,59 @@ import kotlin.math.min
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContent {
-            MaterialTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    PrintAndDrawApp()
-                }
-            }
-        }
+        setContent { MaterialTheme { PrintAndDraw() } }
     }
 }
 
-data class Segment(
-    val start: Offset,
-    val end: Offset,
-    val argb: Int,
-    val width: Float
-)
+data class Segment(val a: Offset, val b: Offset, val color: Int, val width: Float)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrintAndDrawApp() {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val segments = remember { mutableStateListOf<Segment>() }
+fun PrintAndDraw() {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val lines = remember { mutableStateListOf<Segment>() }
     val redo = remember { mutableStateListOf<Segment>() }
-    var selectedColor by remember { mutableStateOf(Color(0xFF1565C0)) }
-    var strokeWidth by remember { mutableFloatStateOf(32f) }
-    var canvasSize by remember { mutableStateOf(IntSize.Zero) }
-    var dragStart by remember { mutableStateOf<Offset?>(null) }
-    var dragCurrent by remember { mutableStateOf<Offset?>(null) }
+    var color by remember { mutableStateOf(Color.Blue) }
+    var width by remember { mutableFloatStateOf(32f) }
+    var start by remember { mutableStateOf<Offset?>(null) }
+    var end by remember { mutableStateOf<Offset?>(null) }
+    var size by remember { mutableStateOf(IntSize.Zero) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Print & Draw") },
-                actions = {
-                    IconButton(
-                        enabled = segments.isNotEmpty(),
-                        onClick = {
-                            if (segments.isNotEmpty()) {
-                                redo.add(segments.removeAt(segments.lastIndex))
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Undo, contentDescription = "Undo")
-                    }
-                    IconButton(
-                        enabled = redo.isNotEmpty(),
-                        onClick = {
-                            if (redo.isNotEmpty()) {
-                                segments.add(redo.removeAt(redo.lastIndex))
-                            }
-                        }
-                    ) {
-                        Icon(Icons.Default.Redo, contentDescription = "Redo")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                ColorWheel(
-                    color = selectedColor,
-                    onColor = { selectedColor = it }
-                )
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Block thickness: ${strokeWidth.toInt()} px")
-                    Slider(
-                        value = strokeWidth,
-                        onValueChange = { strokeWidth = it },
-                        valueRange = 8f..120f
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+    Scaffold(topBar = {
+        TopAppBar(title = { Text("Print & Draw") }, actions = {
+            IconButton(enabled = lines.isNotEmpty(), onClick = { if (lines.isNotEmpty()) redo.add(lines.removeAt(lines.lastIndex)) }) { Icon(Icons.Default.Undo, "Undo") }
+            IconButton(enabled = redo.isNotEmpty(), onClick = { if (redo.isNotEmpty()) lines.add(redo.removeAt(redo.lastIndex)) }) { Icon(Icons.Default.Redo, "Redo") }
+        })
+    }) { pad ->
+        Column(Modifier.fillMaxSize().padding(pad).padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                ColorWheel(color) { color = it }
+                Column(Modifier.weight(1f)) {
+                    Text("Block thickness: ${width.toInt()} px")
+                    Slider(width, { width = it }, valueRange = 8f..120f)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(
-                            onClick = {
-                                if (canvasSize != IntSize.Zero) {
-                                    val bitmap = renderBitmap(canvasSize, segments)
-                                    printBitmap(context, bitmap)
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.Print, contentDescription = null)
-                            Spacer(modifier = Modifier.size(6.dp))
-                            Text("Print")
-                        }
-                        Button(
-                            onClick = {
-                                if (canvasSize != IntSize.Zero) {
-                                    val bitmap = renderBitmap(canvasSize, segments)
-                                    savePng(context, bitmap)
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.Save, contentDescription = null)
-                            Spacer(modifier = Modifier.size(6.dp))
-                            Text("PNG")
-                        }
+                        Button(onClick = { if (size != IntSize.Zero) printBitmap(ctx, render(size, lines)) }) { Icon(Icons.Default.Print, null); Spacer(Modifier.width(5.dp)); Text("Print") }
+                        Button(onClick = { if (size != IntSize.Zero) savePng(ctx, render(size, lines)) }) { Icon(Icons.Default.Save, null); Spacer(Modifier.width(5.dp)); Text("PNG") }
                     }
                 }
             }
-
             Text("Drag from one point to another to place a coloured block.")
-
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .background(Color.White)
-                    .onSizeChanged { canvasSize = it }
-            ) {
-                Canvas(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(selectedColor, strokeWidth) {
-                            detectDragGestures(
-                                onDragStart = { pos ->
-                                    dragStart = pos
-                                    dragCurrent = pos
-                                },
-                                onDrag = { change, _ ->
-                                    change.consume()
-                                    dragCurrent = change.position
-                                },
-                                onDragEnd = {
-                                    val start = dragStart
-                                    val end = dragCurrent
-                                    if (start != null && end != null && start != end) {
-                                        segments.add(
-                                            Segment(
-                                                start = start,
-                                                end = end,
-                                                argb = selectedColor.toArgb(),
-                                                width = strokeWidth
-                                            )
-                                        )
-                                        redo.clear()
-                                    }
-                                    dragStart = null
-                                    dragCurrent = null
-                                },
-                                onDragCancel = {
-                                    dragStart = null
-                                    dragCurrent = null
-                                }
-                            )
-                        }
-                ) {
-                    segments.forEach { segment ->
-                        drawLine(
-                            color = Color(segment.argb),
-                            start = segment.start,
-                            end = segment.end,
-                            strokeWidth = segment.width,
-                            cap = StrokeCap.Square
-                        )
-                    }
-
-                    val start = dragStart
-                    val end = dragCurrent
-                    if (start != null && end != null) {
-                        drawLine(
-                            color = selectedColor,
-                            start = start,
-                            end = end,
-                            strokeWidth = strokeWidth,
-                            cap = StrokeCap.Square
-                        )
-                    }
+            Box(Modifier.weight(1f).fillMaxWidth().background(Color.White).onSizeChanged { size = it }) {
+                Canvas(Modifier.fillMaxSize().pointerInput(color, width) {
+                    detectDragGestures(
+                        onDragStart = { start = it; end = it },
+                        onDrag = { change, _ -> change.consume(); end = change.position },
+                        onDragEnd = {
+                            val a = start; val b = end
+                            if (a != null && b != null && a != b) { lines.add(Segment(a, b, color.toArgb(), width)); redo.clear() }
+                            start = null; end = null
+                        },
+                        onDragCancel = { start = null; end = null }
+                    )
+                }) {
+                    lines.forEach { drawLine(Color(it.color), it.a, it.b, it.width, StrokeCap.Square) }
+                    val a = start; val b = end
+                    if (a != null && b != null) drawLine(color, a, b, width, StrokeCap.Square)
                 }
             }
         }
@@ -257,122 +106,45 @@ fun PrintAndDrawApp() {
 }
 
 @Composable
-fun ColorWheel(color: Color, onColor: (Color) -> Unit) {
-    val wheel = remember { buildColorWheel(320).asImageBitmap() }
-
+fun ColorWheel(selected: Color, choose: (Color) -> Unit) {
+    val image = remember { makeWheel(280).asImageBitmap() }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Image(
-            bitmap = wheel,
-            contentDescription = "Colour wheel",
-            modifier = Modifier
-                .size(150.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures { point ->
-                        val radius = min(size.width, size.height) / 2f
-                        val dx = point.x - size.width / 2f
-                        val dy = point.y - size.height / 2f
-                        val distance = hypot(dx, dy)
-                        if (distance <= radius) {
-                            val saturation = (distance / radius).coerceIn(0f, 1f)
-                            val hue = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
-                            onColor(Color.hsv(hue, saturation, 1f))
-                        }
-                    }
-                }
-        )
-        Spacer(modifier = Modifier.height(4.dp))
-        Box(
-            modifier = Modifier
-                .size(width = 150.dp, height = 20.dp)
-                .background(color)
-        )
-    }
-}
-
-fun buildColorWheel(size: Int): Bitmap {
-    val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-    val center = size / 2f
-    val radius = size / 2f
-    val hsv = FloatArray(3)
-
-    for (y in 0 until size) {
-        for (x in 0 until size) {
-            val dx = x - center
-            val dy = y - center
-            val distance = hypot(dx, dy)
-            if (distance <= radius) {
-                hsv[0] = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
-                hsv[1] = (distance / radius).coerceIn(0f, 1f)
-                hsv[2] = 1f
-                bitmap.setPixel(x, y, android.graphics.Color.HSVToColor(hsv))
-            } else {
-                bitmap.setPixel(x, y, android.graphics.Color.TRANSPARENT)
+        Image(image, "Colour wheel", Modifier.size(140.dp).pointerInput(Unit) {
+            detectTapGestures { p ->
+                val r = min(size.width, size.height) / 2f
+                val dx = p.x - size.width / 2f; val dy = p.y - size.height / 2f
+                val d = hypot(dx, dy)
+                if (d <= r) choose(Color.hsv(((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f, (d / r).coerceIn(0f, 1f), 1f))
             }
-        }
+        })
+        Box(Modifier.size(140.dp, 18.dp).background(selected))
     }
-    return bitmap
 }
 
-fun renderBitmap(size: IntSize, segments: List<Segment>): Bitmap {
-    val width = size.width.coerceAtLeast(1)
-    val height = size.height.coerceAtLeast(1)
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = AndroidCanvas(bitmap)
-    canvas.drawColor(android.graphics.Color.WHITE)
-
-    val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.SQUARE
+fun makeWheel(n: Int): Bitmap {
+    val b = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888); val c = n / 2f; val hsv = FloatArray(3)
+    for (y in 0 until n) for (x in 0 until n) {
+        val dx = x - c; val dy = y - c; val d = hypot(dx, dy)
+        b.setPixel(x, y, if (d <= c) { hsv[0] = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f; hsv[1] = (d / c).coerceIn(0f, 1f); hsv[2] = 1f; android.graphics.Color.HSVToColor(hsv) } else android.graphics.Color.TRANSPARENT)
     }
-
-    segments.forEach { segment ->
-        paint.color = segment.argb
-        paint.strokeWidth = segment.width
-        canvas.drawLine(
-            segment.start.x,
-            segment.start.y,
-            segment.end.x,
-            segment.end.y,
-            paint
-        )
-    }
-    return bitmap
+    return b
 }
 
-fun printBitmap(context: Context, bitmap: Bitmap) {
-    PrintHelper(context).apply {
-        scaleMode = PrintHelper.SCALE_MODE_FIT
-        colorMode = PrintHelper.COLOR_MODE_COLOR
-    }.printBitmap("Print & Draw", bitmap)
+fun render(size: IntSize, lines: List<Segment>): Bitmap {
+    val b = Bitmap.createBitmap(size.width.coerceAtLeast(1), size.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+    val c = GCanvas(b); c.drawColor(android.graphics.Color.WHITE)
+    val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.SQUARE }
+    lines.forEach { p.color = it.color; p.strokeWidth = it.width; c.drawLine(it.a.x, it.a.y, it.b.x, it.b.y, p) }
+    return b
 }
 
-fun savePng(context: Context, bitmap: Bitmap) {
-    val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-    val values = ContentValues().apply {
-        put(MediaStore.Images.Media.DISPLAY_NAME, "print_and_draw_$stamp.png")
-        put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-        put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PrintAndDraw")
-        put(MediaStore.Images.Media.IS_PENDING, 1)
-    }
+fun printBitmap(ctx: Context, b: Bitmap) = PrintHelper(ctx).apply { scaleMode = PrintHelper.SCALE_MODE_FIT; colorMode = PrintHelper.COLOR_MODE_COLOR }.printBitmap("Print & Draw", b)
 
-    val resolver = context.contentResolver
-    val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-
-    if (uri == null) {
-        Toast.makeText(context, "Could not create PNG", Toast.LENGTH_SHORT).show()
-        return
-    }
-
-    try {
-        resolver.openOutputStream(uri)?.use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        }
-        values.clear()
-        values.put(MediaStore.Images.Media.IS_PENDING, 0)
-        resolver.update(uri, values, null, null)
-        Toast.makeText(context, "Saved to Pictures/PrintAndDraw", Toast.LENGTH_SHORT).show()
-    } catch (error: Exception) {
-        resolver.delete(uri, null, null)
-        Toast.makeText(context, "Save failed: ${error.message}", Toast.LENGTH_LONG).show()
-    }
+fun savePng(ctx: Context, b: Bitmap) {
+    val name = "print_and_draw_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}.png"
+    val v = ContentValues().apply { put(MediaStore.Images.Media.DISPLAY_NAME, name); put(MediaStore.Images.Media.MIME_TYPE, "image/png"); put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PrintAndDraw"); put(MediaStore.Images.Media.IS_PENDING, 1) }
+    val r = ctx.contentResolver; val u = r.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v)
+    if (u == null) { Toast.makeText(ctx, "Could not create PNG", Toast.LENGTH_SHORT).show(); return }
+    try { r.openOutputStream(u)?.use { b.compress(Bitmap.CompressFormat.PNG, 100, it) }; v.clear(); v.put(MediaStore.Images.Media.IS_PENDING, 0); r.update(u, v, null, null); Toast.makeText(ctx, "Saved to Pictures/PrintAndDraw", Toast.LENGTH_SHORT).show() }
+    catch (e: Exception) { r.delete(u, null, null); Toast.makeText(ctx, "Save failed", Toast.LENGTH_LONG).show() }
 }
