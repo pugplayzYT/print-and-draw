@@ -97,9 +97,12 @@ fun PrintAndDraw() {
     var brightness by remember { mutableFloatStateOf(1f) }
     val color = Color.hsv(hue, saturation, brightness)
 
-    val developerCodeActive = hue.roundToInt() == 150 &&
-        (saturation * 100).roundToInt() == 40 &&
-        (brightness * 100).roundToInt() == 40
+    val hueCode = hue.roundToInt()
+    val saturationCode = (saturation * 100).roundToInt()
+    val brightnessCode = (brightness * 100).roundToInt()
+    val developerCodeActive = hueCode in 147..153 &&
+        saturationCode in 37..43 &&
+        brightnessCode in 37..43
 
     val preferences = remember { ctx.getSharedPreferences("print_and_draw_settings", Context.MODE_PRIVATE) }
     var developerMode by remember {
@@ -450,14 +453,29 @@ fun ColourPickerDialog(
 
                 Text(colorToHex(selected), style = MaterialTheme.typography.titleMedium)
 
-                SliderLabel("Hue", "${hue.toInt()}°")
-                Slider(value = hue, onValueChange = onHueChange, valueRange = 0f..360f)
+                SliderLabel("Hue", "${hue.roundToInt()}°")
+                Slider(
+                    value = hue,
+                    onValueChange = onHueChange,
+                    valueRange = 0f..360f,
+                    steps = 359
+                )
 
-                SliderLabel("Saturation", "${(saturation * 100).toInt()}%")
-                Slider(value = saturation, onValueChange = onSaturationChange, valueRange = 0f..1f)
+                SliderLabel("Saturation", "${(saturation * 100).roundToInt()}%")
+                Slider(
+                    value = saturation,
+                    onValueChange = onSaturationChange,
+                    valueRange = 0f..1f,
+                    steps = 99
+                )
 
-                SliderLabel("Brightness", "${(brightness * 100).toInt()}%")
-                Slider(value = brightness, onValueChange = onBrightnessChange, valueRange = 0f..1f)
+                SliderLabel("Brightness", "${(brightness * 100).roundToInt()}%")
+                Slider(
+                    value = brightness,
+                    onValueChange = onBrightnessChange,
+                    valueRange = 0f..1f,
+                    steps = 99
+                )
 
                 if (developerModeUnlocked) {
                     AssistChip(
