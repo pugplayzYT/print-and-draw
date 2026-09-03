@@ -21,10 +21,13 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.ColorLens
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Redo
 import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.Undo
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -44,6 +47,8 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.print.PrintHelper
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,6 +57,7 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 class MainActivity : ComponentActivity() {
@@ -63,10 +69,26 @@ class MainActivity : ComponentActivity() {
 
 data class Segment(val a: Offset, val b: Offset, val color: Int, val width: Float)
 
+private const val DEFAULT_SCRIPT = """# Circle demo
+pen up
+pen speed 1000
+let cx = w / 2
+let cy = h / 2
+let r = 120
+let a = 0
+pen position cx + cos(a) * r, cy + sin(a) * r
+pen down
+repeat 361 {
+    pen position cx + cos(a) * r, cy + sin(a) * r
+    set a = a + 1
+}
+pen up"""
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PrintAndDraw() {
     val ctx = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     val lines = remember { mutableStateListOf<Segment>() }
     val redo = remember { mutableStateListOf<Segment>() }
 
@@ -75,11 +97,19 @@ fun PrintAndDraw() {
     var brightness by remember { mutableFloatStateOf(1f) }
     val color = Color.hsv(hue, saturation, brightness)
 
+    val developerMode = hue.roundToInt() == 150 &&
+        (saturation * 100).roundToInt() == 40 &&
+        (brightness * 100).roundToInt() == 40
+
     var width by remember { mutableFloatStateOf(32f) }
     var start by remember { mutableStateOf<Offset?>(null) }
     var end by remember { mutableStateOf<Offset?>(null) }
     var canvasSize by remember { mutableStateOf(IntSize.Zero) }
     var showColourPicker by remember { mutableStateOf(false) }
+    var showScriptEditor by remember { mutableStateOf(false) }
+    var scriptText by remember { mutableStateOf(DEFAULT_SCRIPT) }
+    var scriptStatus by remember { mutableStateOf("Ready") }
+    var scriptJob by remember { mutableStateOf<Job?>(null) }
 
     Scaffold(
         topBar = {
@@ -164,6 +194,17 @@ fun PrintAndDraw() {
                 }
             }
 
+            if (developerMode) {
+                FilledTonalButton(
+                    onClick = { showScriptEditor = true },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(Icons.Default.Code, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Scripting block • Developer mode")
+                }
+            }
+
             Text("Drag from one point to another to place a coloured block.")
 
             Box(
@@ -242,6 +283,112 @@ fun PrintAndDraw() {
             onDismiss = { showColourPicker = false }
         )
     }
+
+    if (showScriptEditor) {
+        ScriptEditorDialog(
+            script = scriptText,
+            status = scriptStatus,
+            running = scriptJob?.isActive == true,
+            onScriptChange = { scriptText = it },
+            onRun = {
+                if (canvasSize == IntSize.Zero) {
+                    scriptStatus = "Canvas is not ready"
+                } else {
+                    scriptJob?.cancel()
+                    redo.clear()
+                    scriptJob = scope.launch {
+                        try {
+                            DrawScriptEngine.run(
+                                source = scriptText,
+                                canvasSize = canvasSize,
+                                color = color.toArgb(),
+                                strokeWidth = width,
+                                onSegment = { lines.add(it) },
+                                onStatus = { scriptStatus = it }
+                            )
+                        } catch (e: Exception) {
+                            scriptStatus = if (e is kotlinx.coroutines.CancellationException) "Stopped" else "Error: ${e.message}"
+                        }
+                    }
+                }
+            },
+            onStop = {
+                scriptJob?.cancel()
+                scriptStatus = "Stopped"
+            },
+            onDismiss = { showScriptEditor = false }
+        )
+    }
+}
+
+@Composable
+fun ScriptEditorDialog(
+    script: String,
+    status: String,
+    running: Boolean,
+    onScriptChange: (String) -> Unit,
+    onRun: () -> Unit,
+    onStop: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(28.dp),
+            tonalElevation = 8.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 720.dp)
+                    .padding(18.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text("Drawing Script", style = MaterialTheme.typography.headlineSmall)
+                Text(
+                    "Commands: pen up/down, pen position x,y, pen speed n, let/set, repeat { }, if { }. Math: + - * / %, sin(), cos(), tan(), sqrt(), abs(). Built-ins: w, h, pi.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+
+                OutlinedTextField(
+                    value = script,
+                    onValueChange = onScriptChange,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    label = { Text("Script") },
+                    textStyle = MaterialTheme.typography.bodySmall
+                )
+
+                Text(status, style = MaterialTheme.typography.labelLarge)
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onRun,
+                        enabled = !running,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(5.dp))
+                        Text("Run")
+                    }
+                    OutlinedButton(
+                        onClick = onStop,
+                        enabled = running,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Stop, contentDescription = null)
+                        Spacer(Modifier.width(5.dp))
+                        Text("Stop")
+                    }
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -298,12 +445,7 @@ fun ColourPickerDialog(
                 SliderLabel("Brightness", "${(brightness * 100).toInt()}%")
                 Slider(value = brightness, onValueChange = onBrightnessChange, valueRange = 0f..1f)
 
-                Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text("Done")
-                }
+                Button(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Done") }
             }
         }
     }
@@ -318,11 +460,7 @@ fun SliderLabel(name: String, value: String) {
 }
 
 @Composable
-fun ColourWheel(
-    hue: Float,
-    saturation: Float,
-    onPick: (Float, Float) -> Unit
-) {
+fun ColourWheel(hue: Float, saturation: Float, onPick: (Float, Float) -> Unit) {
     val image = remember { makeWheel(500).asImageBitmap() }
 
     Box(modifier = Modifier.size(230.dp), contentAlignment = Alignment.Center) {
@@ -375,19 +513,8 @@ fun ColourWheel(
                 center.x + cos(angle).toFloat() * markerDistance,
                 center.y + sin(angle).toFloat() * markerDistance
             )
-
-            drawCircle(
-                color = Color.White,
-                radius = 12f,
-                center = marker,
-                style = Stroke(width = 5f)
-            )
-            drawCircle(
-                color = Color.Black,
-                radius = 8f,
-                center = marker,
-                style = Stroke(width = 2f)
-            )
+            drawCircle(Color.White, 12f, marker, style = Stroke(width = 5f))
+            drawCircle(Color.Black, 8f, marker, style = Stroke(width = 2f))
         }
     }
 }
@@ -396,51 +523,37 @@ fun makeWheel(n: Int): Bitmap {
     val bitmap = Bitmap.createBitmap(n, n, Bitmap.Config.ARGB_8888)
     val center = n / 2f
     val hsv = FloatArray(3)
-
-    for (y in 0 until n) {
-        for (x in 0 until n) {
-            val dx = x - center
-            val dy = y - center
-            val d = hypot(dx, dy)
-
-            bitmap.setPixel(
-                x,
-                y,
-                if (d <= center) {
-                    hsv[0] = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
-                    hsv[1] = (d / center).coerceIn(0f, 1f)
-                    hsv[2] = 1f
-                    android.graphics.Color.HSVToColor(hsv)
-                } else {
-                    android.graphics.Color.TRANSPARENT
-                }
-            )
-        }
+    for (y in 0 until n) for (x in 0 until n) {
+        val dx = x - center
+        val dy = y - center
+        val d = hypot(dx, dy)
+        bitmap.setPixel(
+            x,
+            y,
+            if (d <= center) {
+                hsv[0] = ((atan2(dy, dx) * 180f / PI.toFloat()) + 360f) % 360f
+                hsv[1] = (d / center).coerceIn(0f, 1f)
+                hsv[2] = 1f
+                android.graphics.Color.HSVToColor(hsv)
+            } else android.graphics.Color.TRANSPARENT
+        )
     }
-
     return bitmap
 }
 
 fun render(size: IntSize, lines: List<Segment>): Bitmap {
-    val bitmap = Bitmap.createBitmap(
-        size.width.coerceAtLeast(1),
-        size.height.coerceAtLeast(1),
-        Bitmap.Config.ARGB_8888
-    )
+    val bitmap = Bitmap.createBitmap(size.width.coerceAtLeast(1), size.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
     val canvas = GCanvas(bitmap)
     canvas.drawColor(android.graphics.Color.WHITE)
-
     val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.SQUARE
     }
-
     lines.forEach {
         paint.color = it.color
         paint.strokeWidth = it.width
         canvas.drawLine(it.a.x, it.a.y, it.b.x, it.b.y, paint)
     }
-
     return bitmap
 }
 
@@ -459,19 +572,14 @@ fun savePng(ctx: Context, bitmap: Bitmap) {
         put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/PrintAndDraw")
         put(MediaStore.Images.Media.IS_PENDING, 1)
     }
-
     val resolver = ctx.contentResolver
     val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-
     if (uri == null) {
         Toast.makeText(ctx, "Could not create PNG", Toast.LENGTH_SHORT).show()
         return
     }
-
     try {
-        resolver.openOutputStream(uri)?.use { stream ->
-            bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)
-        }
+        resolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         values.clear()
         values.put(MediaStore.Images.Media.IS_PENDING, 0)
         resolver.update(uri, values, null, null)
