@@ -17,7 +17,6 @@ import kotlin.math.tan
  * moving the virtual pen and emitting canvas segments or generated frames.
  */
 object DrawScriptEngine {
-    private const val MAX_STATEMENTS = 100_000
     private const val MAX_REPEAT = 100_000
     private const val MAX_FRAMES = 10_000
     private const val MIN_PEN_WIDTH = 1.0
@@ -37,6 +36,7 @@ object DrawScriptEngine {
     ) {
         if (canvasSize == IntSize.Zero) error("Canvas is not ready")
 
+        val maxStatements = DeveloperConfig.readMaxSteps(PrintAndDrawApp.appContext)
         val parser = Parser(source)
         val program = parser.parse()
         val env = mutableMapOf<String, Double>(
@@ -50,7 +50,7 @@ object DrawScriptEngine {
         var speed = 1000.0
         var currentColor = color
         var currentWidth = strokeWidth.coerceIn(MIN_PEN_WIDTH.toFloat(), MAX_PEN_WIDTH.toFloat())
-        var executed = 0
+        var executed = 0L
         var frameSystemRegistered = false
         var frameRate = DEFAULT_FRAME_RATE
         var activeFrameSegments: MutableList<Segment>? = null
@@ -78,8 +78,8 @@ object DrawScriptEngine {
 
         suspend fun tick() {
             executed++
-            if (executed > MAX_STATEMENTS) error("Script exceeded $MAX_STATEMENTS drawing steps")
-            if (executed % 128 == 0) yield()
+            if (executed > maxStatements) error("Script exceeded $maxStatements drawing steps")
+            if (executed % 128L == 0L) yield()
         }
 
         suspend fun execute(statements: List<Stmt>) {
