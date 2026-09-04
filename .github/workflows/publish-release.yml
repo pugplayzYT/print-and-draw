@@ -32,6 +32,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: pugplayzYT/print-and-draw
           BUILD_NUMBER: ${{ github.event.workflow_run.run_number }}
           BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
