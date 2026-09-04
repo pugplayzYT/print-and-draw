@@ -1,6 +1,6 @@
 # Print & Draw Scripting Language
 
-Print & Draw includes a tiny drawing-only scripting language. It can move a virtual pen, draw coloured line segments, use variables and conditions, and optionally generate frame-by-frame animations.
+Print & Draw includes a tiny drawing-only scripting language. It can move a virtual pen, draw coloured line segments, use variables and conditions, clear the scene while running, and optionally generate frame-by-frame animations.
 
 The language cannot access files, the network, Android APIs, a shell, reflection, or arbitrary Kotlin/Java code.
 
@@ -119,6 +119,36 @@ color 0, 200, 255
 ```
 
 Each channel can be an expression. Values are rounded and clamped to `0` through `255`.
+
+## Scene commands
+
+### `clear scene`
+
+Clears the current canvas immediately and then continues running the script.
+
+```text
+pen up
+pen width 30
+pen colour 255, 0, 0
+pen position 40, 100
+pen down
+pen position 300, 100
+pen up
+
+clear scene
+
+pen colour 0, 120, 255
+pen position 40, 180
+pen down
+pen position 300, 180
+pen up
+```
+
+`clear canvas` is also accepted as an alias.
+
+Clearing the scene removes script-generated static drawing and anything already drawn in the current frame. It does **not** reset variables, pen position, pen up/down state, pen speed, pen width, or pen colour.
+
+Inside a generated frame block, `clear scene` also removes static script drawing that existed before the frame block from that point onward.
 
 ## Variables
 
@@ -437,7 +467,7 @@ generate 1800 frames {
 
 ## Frame rendering behavior
 
-Generated frames visually replace the previous generated frame instead of permanently stacking every animation frame on top of the canvas. Static segments drawn outside the frame block are included again on every frame.
+Generated frames visually replace the previous generated frame instead of permanently stacking every animation frame on top of the canvas. Static segments drawn outside the frame block are included again on every frame unless a later `clear scene` removes them.
 
 The script status displays progress such as `Frame 37 / 300 • 30 fps` while an animation is running.
 
@@ -471,7 +501,8 @@ When a script starts, its initial pen colour and width come from the app's curre
 
 - **Run** starts the script or animation.
 - **Stop** cancels a running script or animation.
-- **Clear canvas** stops a running script and deletes every drawn segment.
+- **Clear canvas** in the app UI stops a running script and deletes every drawn segment.
+- `clear scene` or its `clear canvas` scripting alias clears the canvas without stopping the script.
 
 ## Limits
 

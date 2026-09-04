@@ -76,6 +76,15 @@ object DrawScriptEngine {
             }
         }
 
+        fun wipeCanvas() {
+            onSegment(Segment(
+                Offset(canvasSize.width / 2f, 0f),
+                Offset(canvasSize.width / 2f, canvasSize.height.toFloat()),
+                0xFFFFFFFF.toInt(),
+                canvasSize.width.toFloat() + 4f
+            ))
+        }
+
         suspend fun tick() {
             executed++
             if (executed > maxStatements) error("Script exceeded $maxStatements drawing steps")
@@ -108,6 +117,12 @@ object DrawScriptEngine {
                         pen = next
                         tick()
                         if (speed < 1000.0) delay((1000.0 / speed).toLong().coerceAtLeast(1L))
+                    }
+                    Stmt.ClearScene -> {
+                        staticSegments.clear()
+                        activeFrameSegments?.clear()
+                        wipeCanvas()
+                        tick()
                     }
                     is Stmt.Repeat -> {
                         val count = Expression(statement.count, env).value().roundToInt().coerceIn(0, MAX_REPEAT)
@@ -151,12 +166,7 @@ object DrawScriptEngine {
                             try { execute(statement.body) } finally { activeFrameSegments = null }
 
                             val renderedFrame = staticSegments + frameSegments
-                            onSegment(Segment(
-                                Offset(canvasSize.width / 2f, 0f),
-                                Offset(canvasSize.width / 2f, canvasSize.height.toFloat()),
-                                0xFFFFFFFF.toInt(),
-                                canvasSize.width.toFloat() + 4f
-                            ))
+                            wipeCanvas()
                             renderedFrame.forEach(onSegment)
                             onFrame(renderedFrame, frameNumber, frameCount)
                             onStatus("Frame $frameNumber / $frameCount • ${frameRate.roundToInt()} fps")
@@ -188,6 +198,7 @@ object DrawScriptEngine {
         data class Width(val expression: String) : Stmt
         data class Color(val red: String, val green: String, val blue: String) : Stmt
         data class Position(val x: String, val y: String) : Stmt
+        data object ClearScene : Stmt
         data class Repeat(val count: String, val body: List<Stmt>) : Stmt
         data class If(val condition: String, val body: List<Stmt>) : Stmt
         data object RegisterFrameSystem : Stmt
@@ -232,6 +243,7 @@ object DrawScriptEngine {
                     line == "register frame system" || line == "register frames" -> { out += Stmt.RegisterFrameSystem; index++ }
                     line.startsWith("frame rate ") -> { val e = line.removePrefix("frame rate ").trim(); requireText(e, "frame rate"); out += Stmt.FrameRate(e); index++ }
                     line.startsWith("fps ") -> { val e = line.removePrefix("fps ").trim(); requireText(e, "frame rate"); out += Stmt.FrameRate(e); index++ }
+                    line == "clear scene" || line == "clear canvas" -> { out += Stmt.ClearScene; index++ }
                     line == "pen up" -> { out += Stmt.Pen(false); index++ }
                     line == "pen down" -> { out += Stmt.Pen(true); index++ }
                     line.startsWith("pen speed ") -> { out += Stmt.Speed(line.removePrefix("pen speed ").trim()); index++ }

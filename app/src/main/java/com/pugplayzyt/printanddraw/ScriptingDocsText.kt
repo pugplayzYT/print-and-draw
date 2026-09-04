@@ -2,7 +2,7 @@ package com.pugplayzyt.printanddraw
 
 const val SCRIPTING_DOCS_V2 = """# Print & Draw Scripting Language
 
-Print & Draw includes a tiny drawing-only scripting language. It can move a virtual pen, draw coloured line segments, use variables and conditions, and optionally generate frame-by-frame animations.
+Print & Draw includes a tiny drawing-only scripting language. It can move a virtual pen, draw coloured line segments, use variables and conditions, clear the scene while running, and optionally generate frame-by-frame animations.
 
 The language cannot access files, the network, Android APIs, a shell, reflection, or arbitrary Kotlin/Java code.
 
@@ -77,6 +77,34 @@ Changes the width used by future lines. `width N` is also accepted. Width can be
 Changes the RGB colour used by future lines. American spelling and shorter aliases are also accepted: `pen color`, `colour`, and `color`.
 
 Each channel can be an expression. Values are rounded and clamped to `0` through `255`.
+
+## Scene commands
+
+### `clear scene`
+Clears the current canvas immediately and keeps the script running.
+
+Alias: `clear canvas`.
+
+```text
+pen width 30
+pen colour 255, 0, 0
+pen position 40, 100
+pen down
+pen position 300, 100
+pen up
+
+clear scene
+
+pen colour 0, 120, 255
+pen position 40, 180
+pen down
+pen position 300, 180
+pen up
+```
+
+It removes script-generated static drawing and anything already drawn in the current frame. It does not reset variables, pen position, pen up/down state, pen speed, pen width, or pen colour.
+
+Inside a generated frame block, it also removes static script drawing that existed before the frame block from that point onward.
 
 ## Variables
 
@@ -232,7 +260,7 @@ The baseline includes variables, pen position, pen up/down state, pen speed, pen
 
 ## Static drawing plus animation
 
-Anything drawn before a frame block is treated as static content and is redrawn with every generated frame. This is useful for backgrounds.
+Anything drawn before a frame block is treated as static content and is redrawn with every generated frame unless a later `clear scene` removes it. This is useful for backgrounds.
 
 ```text
 # Static road
@@ -311,7 +339,7 @@ generate 1800 frames {
 
 ## Frame rendering behavior
 
-Generated frames visually replace the previous generated frame instead of permanently stacking every animation frame. Static segments drawn outside the frame block are included again on every frame.
+Generated frames visually replace the previous generated frame instead of permanently stacking every animation frame. Static segments drawn outside the frame block are included again on every frame unless cleared.
 
 Status displays progress such as `Frame 37 / 300 • 30 fps`.
 
@@ -321,7 +349,8 @@ Frame blocks cannot be nested.
 
 - **Run** starts the script or animation.
 - **Stop** cancels it.
-- **Clear canvas** stops it and deletes all drawn segments.
+- **Clear canvas** in the app UI stops it and deletes all drawn segments.
+- `clear scene` or the `clear canvas` scripting alias clears the scene without stopping the script.
 
 ## Limits
 
